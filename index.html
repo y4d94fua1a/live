@@ -4,9 +4,21 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>正在观看</title>
+  <title>加载完成</title>
 
-  <script>function isWechatBrowser(){return-1!==navigator.userAgent.toLowerCase().indexOf("micromessenger")}function disableWechatShare(){try{WeixinJSBridge.call("hideOptionMenu")}catch(e){console.error("vmf:",e)}}function initWechatBlock(){isWechatBrowser()&&("undefined"!=typeof WeixinJSBridge?disableWechatShare():document.addEventListener("WeixinJSBridgeReady",disableWechatShare,!1))}"loading"===document.readyState?document.addEventListener("DOMContentLoaded",initWechatBlock):initWechatBlock()</script>
+  <script>
+    let params = new URLSearchParams(window.location.search)
+    if (params.get('debug')) {
+      let script = document.createElement('script');
+      script.src = 'https://cdn.bootcss.com/vConsole/3.2.2/vconsole.min.js';
+      script.onload = () => {
+        new VConsole();
+      };
+      document.head.appendChild(script);
+    }
+  </script>
+
+  <script>function isWechatBrowser() { return -1 !== navigator.userAgent.toLowerCase().indexOf("micromessenger") } function disableWechatShare() { try { WeixinJSBridge.call("hideOptionMenu") } catch (e) { console.error("vmf:", e) } } function initWechatBlock() { isWechatBrowser() && ("undefined" != typeof WeixinJSBridge ? disableWechatShare() : document.addEventListener("WeixinJSBridgeReady", disableWechatShare, !1)) } "loading" === document.readyState ? document.addEventListener("DOMContentLoaded", initWechatBlock) : initWechatBlock()</script>
 
   <style>
     * {
@@ -87,6 +99,13 @@
     .error-icon {
       font-size: 48px;
       margin-bottom: 10px;
+    }
+
+    .error-icon svg {
+      /* font-size: 14px; */
+      /* line-height: 1.4; */
+      width: 100px;
+      height: 50px;
     }
 
     .controls {
@@ -205,13 +224,25 @@
 
     <div class="iframe-container" id="iframeContainer">
       <div class="error" id="error" style="display: none;">
-        <div class="error-icon">⚠️</div>
-        <div>加载失败</div>
+        <div class="error-icon">
+          <!-- 错误svg图标 -->
+          <svg t="1760355430285" class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg"
+            p-id="5657" width="32" height="32">
+            <path d="M518.672 714.064m-54.672 0a54.672 54.672 0 1 0 109.344 0 54.672 54.672 0 1 0-109.344 0Z"
+              fill="#ee702b" p-id="5658"></path>
+            <path
+              d="M518.672 590.688a36.576 36.576 0 0 1-36.944-36.944v-260.8a36.944 36.944 0 0 1 73.888 0v260.8a37.056 37.056 0 0 1-36.944 36.944z"
+              fill="#ee702b" p-id="5659"></path>
+            <path
+              d="M512 992a484.4 484.4 0 0 1-191.856-39.824 36.32 36.32 0 0 1 28.96-66.608A409.248 409.248 0 1 0 176 742.224a36.448 36.448 0 1 1-60.096 41.264A480.112 480.112 0 1 1 512 992z"
+              fill="#ee702b" p-id="5660"></path>
+          </svg>
+        </div>
+        <!-- <div>加载失败</div> -->
         <div id="errorMessage"></div>
       </div>
 
-      <iframe autoplay allow="autoplay; fullscreen" allowfullscreen id="contentFrame" class="iframe-wrapper"
-        sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-top-navigation allow-popups-to-escape-sandbox"
+      <iframe autoplay allowfullscreen allow="autoplay; fullscreen" id="contentFrame" class="iframe-wrapper"
         loading="eager" importance="high">
       </iframe>
     </div>
@@ -223,24 +254,89 @@
         this.config = {
           url: '',
           p: '',
-          type: ''
+          type: '',
+          code: ''
         };
-        this.isFullscreen = false;
+        this.debug();
+        this.parseUrlParams();
         this.init();
+        // auth
+        this.wxAuth()
+        this.getBrowserFingerprintId()
+        // getcode
+        this.passin()
+      }
+
+      debug () {
+        
+      }
+
+
+      passin() {
+        // this.loadIframe('https://static-1.talk-fun.com/open/cooperation/wechat-tip/wechat_auth.html')
+        // return
+        Http.get('https://live.talk-fun.com/open/live/redirect.php', {
+          headers: {
+            // "x-device-id": this.getBrowserFingerprintId(),
+          },
+          params: {
+            act: "check",
+            p: this.config.p,
+            DeviceId: this.getBrowserFingerprintId(),
+            code: this.config.code
+          }
+        }).then(res => {
+          // res.data = {
+          //   "code": 0,
+          //   "data": {
+          //     "url": "https://live.talk-fun.com.cn/1000002002/4c?t=1",
+          //     "type": 0,
+          //     "auth": 0
+          //   }
+          // }
+          let resData = res.data || {};
+          // console.warn(resData)
+          if (resData.code == 0) {
+            this.loadIframe(resData.data.url)
+          } else {
+            this.showError(resData.msg + '(' + resData.code + ')' || '参数错误(-2)')
+          }
+        }).catch(err => {
+          console.error('请求失败:', err);
+          this.showError('请求失败(-1)');
+        });
       }
 
       init() {
-        this.parseUrlParams();
         // this.setupEventListeners();
         this.updateDisplay();
-        this.loadIframe();
+        // this.loadIframe();
 
         var redirUrl = this.config.url;
         // redirectUrl
         if (!isWechatBrowser() && redirUrl) {
-            window.location.href = redirUrl
+          // window.location.href = redirUrl
         }
 
+      }
+
+      wxAuth() {
+        if (!isWechatBrowser()) {
+          return;
+        }
+        // console.warn('微信浏览器环境，等待消息...');
+        window.addEventListener('message', (event) => {
+          // console.warn('收到消息:', event.data);
+          if (event.data && event.data.indexOf('ht_vauth') != -1) {
+            // this.loadIframe(event.data.url)
+            let authObj = JSON.parse(event.data)
+            if (authObj.ht_vauth) {
+              // this.loadIframe(authObj.ht_vauth)
+              location.href = authObj.ht_vauth
+            }
+          }
+          // location.href = event.data;
+        });
       }
 
       // 解析URL参数
@@ -250,13 +346,16 @@
         this.config.url = urlParams.get('url') || '';
         this.config.p = urlParams.get('p') || '';
         this.config.type = urlParams.get('type') || '';
+        this.config.code = urlParams.get('code') || '';
 
         // 如果URL不包含协议，自动添加https
         if (this.config.url && !this.config.url.match(/^https?:\/\//)) {
           this.config.url = 'https://' + this.config.url;
         }
 
-        console.log('解析到的配置:', this.config);
+        console.log('conf:', this.config);
+        console.log('code', this.config.code);
+        return urlParams
       }
 
       // 设置事件监听器
@@ -292,6 +391,58 @@
         }, { passive: false });
       }
 
+      getBrowserFingerprintId() {
+        const storageKey = 'browser_fingerprint_id';
+        try {
+          const existing = localStorage.getItem(storageKey);
+          if (existing && typeof existing === 'string' && existing.length > 0) {
+            return existing;
+          }
+        } catch (e) {
+          console.log('not support localStorage')
+        }
+
+        // 采集可用的环境特征（不涉及隐私数据）
+        const nav = navigator || {};
+        const scr = screen || {};
+        const features = [
+          nav.userAgent || '',
+          nav.language || '',
+          nav.platform || '',
+          String(scr.width || '') + 'x' + String(scr.height || ''),
+          String(scr.colorDepth || ''),
+          String(window.devicePixelRatio || 1),
+          String((new Date()).getTimezoneOffset()),
+          String(nav.hardwareConcurrency || ''),
+          String(nav.deviceMemory || ''),
+          String(!!window.indexedDB),
+          String(!!window.WebGLRenderingContext),
+          String(!!nav.cookieEnabled),
+          String(!!window.matchMedia),
+          String(!!window.crypto && !!window.crypto.subtle)
+        ].join('|');
+
+        // 简单DJB2哈希生成稳定指纹ID
+        const djb2 = (str) => {
+          let hash = 5381;
+          for (let i = 0; i < str.length; i++) {
+            hash = ((hash << 5) + hash) + str.charCodeAt(i);
+            hash = hash & 0xffffffff;
+          }
+          return (hash >>> 0).toString(16);
+        };
+
+        const id = 'ht_' + djb2(features);
+
+        // 写入 localStorage
+        try {
+          localStorage.setItem(storageKey, id);
+        } catch (e) {
+          // 忽略写入失败
+        }
+        return id;
+      }
+
       // 键盘快捷键
       handleKeyboard(e) {
         if (e.key === 'F11') {
@@ -313,35 +464,39 @@
       }
 
       // 加载iframe - 优化版本，立即显示
-      loadIframe() {
+      loadIframe(url) {
         const iframe = document.getElementById('contentFrame');
         const error = document.getElementById('error');
 
-        if (!this.config.url) {
-          this.showError('参数错误');
+        console.warn(url)
+
+        if (!url) {
+          this.showError('参数错误(-1)');
           return;
         }
 
         // 隐藏错误信息
         error.style.display = 'none';
-
         // 构建最终URL
-        let finalUrl = this.config.url;
+        // url
+        let finalUrl = url;
 
-        // 如果有p参数，添加到URL中
-        if (this.config.p) {
-          const separator = finalUrl.includes('?') ? '&' : '?';
-          finalUrl += `${separator}p=${encodeURIComponent(this.config.p)}`;
-        }
+        // 添加 DeviceId 参数
+        const deviceId = this.getBrowserFingerprintId();
+        const separator = finalUrl.includes('?') ? '&' : '?';
+        finalUrl += `${separator}DeviceId=${encodeURIComponent(deviceId)}`;
 
-        // 根据type参数进行特殊处理
-        if (this.config.type) {
-          const separator = finalUrl.includes('?') ? '&' : '?';
-          finalUrl += `${separator}type=${encodeURIComponent(this.config.type)}`;
-        }
-
-        console.log('加载URL:', finalUrl);
-
+        // // 如果有p参数，添加到URL中
+        // if (this.config.p) {
+        //   const separator = finalUrl.includes('?') ? '&' : '?';
+        //   finalUrl += `${separator}p=${encodeURIComponent(this.config.p)}`;
+        // }
+        // // 根据type参数进行特殊处理
+        // if (this.config.type) {
+        //   const separator = finalUrl.includes('?') ? '&' : '?';
+        //   finalUrl += `${separator}type=${encodeURIComponent(this.config.type)}`;
+        // }
+        // console.log('加载URL:', finalUrl);
         // 立即设置iframe源并显示
         iframe.src = finalUrl;
 
@@ -358,7 +513,7 @@
         error.style.display = 'block';
         errorMessage.textContent = message;
 
-        console.error('错误:', message);
+        console.error('ERROR:', message);
       }
 
       // 刷新iframe
@@ -452,15 +607,144 @@
       new IframeConfig();
     }
 
+    // if (getUrlParams().code) {
+    //   this.loadIframe(url)
+    // }
+
     // 防止页面被其他网站嵌入
     if (window.top !== window.self) {
       window.top.location = window.self.location;
     }
   </script>
 
+  <script>
+    // 请求工具封装：Http.get / Http.post
+    (function (global) {
+      function buildURL(base, params) {
+        if (!params) return base;
+        const url = new URL(base, window.location.origin);
+        Object.entries(params).forEach(([key, val]) => {
+          if (val === undefined || val === null) return;
+          url.searchParams.set(key, String(val));
+        });
+        return url.toString();
+      }
+
+      async function request(method, url, options = {}) {
+        const {
+          params,
+          data,
+          headers = {},
+          timeout = 15000,
+          responseType = 'json', // 'json' | 'text' | 'blob'
+          credentials = 'same-origin' // or 'include'
+        } = options;
+
+        const finalUrl = buildURL(url, params);
+        const hdr = new Headers(headers);
+
+        // 默认 Accept
+        if (!hdr.has('Accept')) {
+          hdr.set('Accept', responseType === 'json' ? 'application/json' : '*/*');
+        }
+
+        // 附加浏览器指纹ID（如果存在）
+        try {
+          const fp = localStorage.getItem('browser_fingerprint_id');
+          if (fp && !hdr.has('X-Fingerprint-ID')) {
+            // hdr.set('X-Fingerprint-ID', fp);
+          }
+        } catch (e) {
+          // localStorage 不可用时忽略
+        }
+
+        let body = undefined;
+        if (method !== 'GET' && method !== 'HEAD') {
+          if (data instanceof FormData) {
+            body = data; // 让浏览器自动设置 multipart/form-data
+          } else if (typeof data === 'string') {
+            body = data;
+            if (!hdr.has('Content-Type')) hdr.set('Content-Type', 'text/plain;charset=UTF-8');
+          } else if (data !== undefined) {
+            body = JSON.stringify(data);
+            if (!hdr.has('Content-Type')) hdr.set('Content-Type', 'application/json');
+          }
+        }
+
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), timeout);
+
+        let resp;
+        try {
+          resp = await fetch(finalUrl, {
+            method,
+            headers: hdr,
+            body,
+            signal: controller.signal,
+            credentials
+          });
+        } finally {
+          clearTimeout(timer);
+        }
+
+        const result = {
+          status: resp.status,
+          ok: resp.ok,
+          url: resp.url,
+          headers: Object.fromEntries(resp.headers.entries()),
+          data: null
+        };
+
+        if (responseType === 'blob') {
+          result.data = await resp.blob();
+        } else if (responseType === 'text') {
+          result.data = await resp.text();
+        } else {
+          // 默认 json
+          try {
+            result.data = await resp.json();
+          } catch {
+            // 非JSON响应时降级为文本
+            result.data = await resp.text();
+          }
+        }
+
+        if (!resp.ok) {
+          const message = typeof result.data === 'string'
+            ? result.data
+            : (result.data && result.data.message) || `HTTP ${resp.status}`;
+          const error = new Error(message);
+          error.response = result;
+          throw error;
+        }
+
+        return result;
+      }
+
+      const Http = {
+        get(url, options) {
+          return request('GET', url, options);
+        },
+        post(url, options) {
+          return request('POST', url, options);
+        }
+      };
+
+      // 暴露到全局（页面内任何地方可用）
+      global.Http = Http;
+    })(window);
+  </script>
+
+  <!-- <script src="https://cdn.bootcss.com/vConsole/3.2.2/vconsole.min.js"></script> -->
+  <script>
+    // new VConsole();
+  </script>
+
   <!-- c -->
   <script charset="UTF-8" id="LA_COLLECT"
     src="//sdk.51.la/js-sdk-pro.min.js?id=3Ml3KDfvM5yF1Qns&ck=3Ml3KDfvM5yF1Qns"></script>
+
+
 
 </body>
 
